@@ -1,0 +1,13 @@
+# variable vaulted
+
+var_docker_hub_login: "{{ vault_docker_hub_login }}"
+var_docker_hub_password: "{{ vault_docker_hub_password }}"
+var_my_private_key: "{{ vault_my_private_key }}"
+
+var_repository_github: "https://github.com/AbdoulRahimBarry/fake-backend-ci.git"
+
+# other variable
+house: "/home/centos"
+
+repository_brach: "master"
+repository_tag: "v1"

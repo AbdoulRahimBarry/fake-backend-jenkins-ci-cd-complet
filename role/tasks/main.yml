@@ -1,0 +1,126 @@
+# connect to docker hub
+- name: Log into DockerHub
+  docker_login:
+    username: "{{ var_docker_hub_login }}"
+    password: "{{ var_docker_hub_password }}"
+  tags:
+    - build
+
+# Creact file	
+- name: Change file ownership, group and permissions
+  file:
+    path: "{{ house }}/new_folder"
+    state: directory
+  tags:
+    - build
+    - deploy
+    - preprod
+    
+# Copy private keys in target    
+- name: Copy file with owner and permissions
+  copy:
+    content: "{{ var_my_private_key }}"
+    dest: "{{ house }}/.ssh/id_rsa"
+    owner: centos
+  tags:
+    - build
+    - deploy
+    - preprod
+    
+# Example git checkout from Ansible Playbooks
+- git:
+    repo: "{{ var_repository_github }}"
+    dest: "{{ house }}/new_folder"
+    key_file: "{{ house }}/.ssh/id_rsa"
+    accept_hostkey: yes
+    force: yes
+    version: "{{ repository_brach }}"
+    recursive: no
+  tags:
+    - build
+    - deploy
+    - preprod
+
+# build and push image   
+- name: Build an image and push it to a private repo
+  docker_image:
+    build:
+      path: "{{ house }}/new_folder/fake-backend/"
+    name: "{{ var_docker_hub_login }}/fake-backend-jenkins_ci_cd_image"
+    tag: "{{ repository_tag }}"
+    push: yes
+    source: build
+  tags:
+    - build
+
+# creact network   
+- name: Create a network
+  docker_network:
+    name: network_battleboat
+  tags:
+    - deploy
+    - preprod
+    - build
+
+- name: Create a volume
+  docker_volume:
+    name: data
+  tags:
+    - deploy
+    - preprod
+         
+# deploy dbgame   
+# Pour le volume les données se trouver dans le container je fait une copy du container dans data
+- name: Create a data container db
+  docker_container:
+    name: dbgame
+    image: mysql:5.7
+    state: started 
+    volumes:
+      - "data:/var/lib/mysql"
+    networks:
+      - name: network_battleboat
+    env:
+      MYSQL_ROOT_PASSWORD: "rootpwdgame"
+      MYSQL_DATABASE: "battleboat"
+      MYSQL_USER: "battleuser"
+      MYSQL_PASSWORD: "battlepass"
+  tags:
+    - deploy
+    - preprod
+
+- name: sleep for 300 seconds and continue with play
+  wait_for:
+    timeout: 60
+  tags:
+    - deploy
+    - preprod
+
+# deploy api  
+# La page se trouve dans battleboat je fait une copy dans le repetoir du container /etc/backend/static
+- name: Create a data container api
+  docker_container:
+    name: frontend
+    image: "{{var_docker_hub_login}}/fake-backend-jenkins_ci_cd_image:{{repository_tag}}"
+    state: started
+    volumes:
+      - "{{ house }}/new_folder/battleboat:/etc/backend/static"
+    networks:
+      - name: network_battleboat
+    ports:
+     - "80:3000"
+    env:
+      DATABASE_HOST: "dbgame"
+      DATABASE_PORT: "3306"
+      DATABASE_USER: "battleuser"
+      DATABASE_PASSWORD: "battlepass"
+      DATABASE_NAME: "battleboat"
+  tags:
+    - deploy
+    - preprod
+
+- name: Check that you can connect (GET) to a page and it returns a status 200
+  uri:
+    url: http://172.18.0.1
+  tags:
+    - testApi
